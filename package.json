@@ -1,0 +1,41 @@
+{
+    "name": "svg.gunther.media",
+    "version": "1.0.0",
+    "description": "A dead simple and modern SVG rasterization tool.",
+    "main": "index.js",
+    "scripts": {
+        "start": "next start src/",
+        "build": "next build src/",
+        "dev": "next dev src/"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/PassTheMayo/svg.gunther.media.git"
+    },
+    "keywords": [
+        "svg",
+        "raster",
+        "website",
+        "utility",
+        "converter",
+        "png",
+        "jpeg",
+        "jpg"
+    ],
+    "author": "Jacob Gunther",
+    "license": "UNLICENSED",
+    "bugs": {
+        "url": "https://github.com/PassTheMayo/svg.gunther.media/issues"
+    },
+    "homepage": "https://github.com/PassTheMayo/svg.gunther.media#readme",
+    "dependencies": {
+        "@svgr/webpack": "^8.1.0",
+        "autoprefixer": "^10.4.20",
+        "next": "^15.0.3",
+        "postcss": "^8.4.49",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "sass": "^1.81.0",
+        "tailwindcss": "^3.4.15"
+    }
+}
