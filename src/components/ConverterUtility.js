@@ -20,13 +20,17 @@ const reducerFunc = (state, action) => {
         case 'ERROR':
             return { state: 'error', message: action.message };
         case 'SET_LOADED':
-            return { state: 'loaded', src: action.src, name: action.name, width: action.width, height: action.height, size: action.size, scale: 0, imageType: 'image/png', quality: 0.9, outputName: getOutputFileName({ name: action.name, scale: 0, imageType: 'image/png' }) };
+            return { state: 'loaded', isProcessing: false, src: action.src, name: action.name, width: action.width, height: action.height, size: action.size, scale: 0, imageType: 'image/png', quality: 0.9, outputName: getOutputFileName({ name: action.name, scale: 0, imageType: 'image/png', quality: 0.9 }), backgroundColor: 'transparent' };
         case 'SET_SCALE':
-            return { ...state, scale: action.scale, outputName: getOutputFileName({ name: state.name, scale: action.scale, imageType: state.imageType }) };
+            return { ...state, scale: action.scale, outputName: getOutputFileName({ name: state.name, scale: action.scale, imageType: state.imageType, quality: state.quality }) };
         case 'SET_IMAGE_TYPE':
-            return { ...state, imageType: action.mimeType, outputName: getOutputFileName({ name: state.name, scale: state.scale, imageType: action.mimeType }) };
+            return { ...state, imageType: action.mimeType, outputName: getOutputFileName({ name: state.name, scale: state.scale, imageType: action.mimeType, quality: state.quality }) };
         case 'SET_QUALITY':
-            return { ...state, quality: action.value };
+            return { ...state, quality: action.value, outputName: getOutputFileName({ name: state.name, scale: state.scale, imageType: state.imageType, quality: action.value }) };
+        case 'SET_BACKGROUND_COLOR':
+            return { ...state, backgroundColor: action.value };
+        case 'SET_PROCESSING':
+            return { ...state, isProcessing: !action.complete };
         default:
             return state;
     }
@@ -42,17 +46,17 @@ const getFileSizeText = (size) => {
     return `${size / (1000 * 1000)} megabytes`;
 };
 
-const getOutputFileName = ({ name, scale, imageType }) => {
+const getOutputFileName = ({ name, scale, imageType, quality }) => {
     const extension = imageTypes.find((type) => type.mimeType === imageType).extension;
 
     const split = name.split('.');
-    split[0] += ` (${2 ** scale}x)`;
+    split[0] += ` (${2 ** scale}x${imageType !== 'image/png' ? `@q${Math.trunc(quality * 100)}` : ''})`;
 
     return split.slice(0, -1).join('.') + `.${extension}`;
 };
 
 export default function ConverterUtility({ className = '' }) {
-    const [data, dispatch] = useReducer(reducerFunc, { state: 'loading' });
+    const [data, dispatch] = useReducer(reducerFunc, { state: 'initial' });
     const [parser, setParser] = useState(null);
 
     useEffect(() => {
@@ -140,34 +144,6 @@ export default function ConverterUtility({ className = '' }) {
                 height,
                 size: getFileSizeText(fileSize)
             });
-
-            /* const inputImage = new Image();
-
-            inputImage.addEventListener('load', () => {
-                const canvasElem = document.createElement('canvas');
-                canvasElem.setAttribute('width', width);
-                canvasElem.setAttribute('height', height);
-
-                const ctx = canvasElem.getContext('2d', { alpha: true });
-                ctx.drawImage(inputImage, 0, 0, width, height);
-
-                canvasElem.toBlob((blob) => {
-                    try {
-                        const src = URL.createObjectURL(blob);
-
-                        const outputImage = document.createElement('img');
-                        outputImage.src = src;
-
-                        
-                    } catch (e) {
-                        console.error(e);
-
-                        dispatch({ type: 'ERROR' });
-                    }
-                }, 'image/png');
-            });
-
-            inputImage.src = `data:image/svg+xml;base64,${btoa(imageData)}`; */
         } catch (e) {
             console.error(e);
 
@@ -176,7 +152,64 @@ export default function ConverterUtility({ className = '' }) {
     };
 
     const handleQualityChange = (event) => {
-        dispatch({ type: 'SET_QUALITY', value: event.target.value });
+        dispatch({ type: 'SET_QUALITY', value: parseFloat(event.target.value) });
+    };
+
+    const handleBackgroundColorClick = () => {
+        const inputElem = document.createElement('input');
+        inputElem.setAttribute('type', 'color');
+
+        inputElem.addEventListener('change', (event) => {
+            dispatch({ type: 'SET_BACKGROUND_COLOR', value: event.target.value });
+        });
+
+        inputElem.click();
+    };
+
+    const handleDownloadClick = () => {
+        dispatch({ type: 'SET_PROCESSING', complete: false });
+
+        try {
+            const inputImage = new Image();
+
+            inputImage.addEventListener('load', () => {
+                const width = data.width * (2 ** data.scale), height = data.height * (2 ** data.scale);
+
+                const canvasElem = document.createElement('canvas');
+                canvasElem.setAttribute('width', width);
+                canvasElem.setAttribute('height', height);
+
+                const ctx = canvasElem.getContext('2d', { alpha: data.imageType !== 'image/jpeg' ? true : false });
+
+                if (data.backgroundColor !== 'transparent' || data.imageType === 'image/jpeg') {
+                    ctx.fillStyle = data.backgroundColor === 'transparent' && data.imageType === 'image/jpeg' ? '#000000' : data.backgroundColor;
+                    ctx.fillRect(0, 0, width, height);
+                }
+
+                ctx.drawImage(inputImage, 0, 0, width, height);
+
+                canvasElem.toBlob((blob) => {
+                    try {
+                        const link = document.createElement('a');
+                        link.setAttribute('href', URL.createObjectURL(blob));
+                        link.setAttribute('download', data.outputName);
+                        link.click();
+
+                        dispatch({ type: 'SET_PROCESSING', complete: true });
+                    } catch (e) {
+                        console.error(e);
+
+                        dispatch({ type: 'ERROR' });
+                    }
+                }, data.imageType, data.quality);
+            });
+
+            inputImage.src = data.src;
+        } catch (e) {
+            console.error(e);
+
+            dispatch({ type: 'ERROR' });
+        }
     };
 
     switch (data.state) {
@@ -229,9 +262,29 @@ export default function ConverterUtility({ className = '' }) {
                     </div>
                     <div>
                         <p className="font-medium text-neutral-700">Quality</p>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 mt-1">
                             <span className="w-10 text-sm text-right text-neutral-500">{data.imageType === 'image/png' ? '100' : Math.trunc(data.quality * 100)}%</span>
                             <input type="range" min="0" max="1" step="0.1" className="mt-1" defaultValue={data.quality} disabled={data.imageType === 'image/png'} onChange={handleQualityChange} />
+                        </div>
+                    </div>
+                    <div>
+                        <p className="font-medium text-neutral-700">Background Color</p>
+                        <div className="flex items-center gap-3 mt-1">
+                            <div className="flex items-center gap-2">
+                                {
+                                    data.backgroundColor !== 'transparent'
+                                        ? <div className="block w-6 h-6 rounded-full" style={{ backgroundColor: data.backgroundColor }} />
+                                        : data.imageType === 'image/jpeg'
+                                            ? <div className="block w-6 h-6 bg-black rounded-full" />
+                                            : <div className="block w-6 h-6 border rounded-full border-neutral-300 transparent" />
+                                }
+                                <button type="button" className="text-sm text-black underline underline-offset-2" onClick={handleBackgroundColorClick}>{data.backgroundColor === 'transparent' && data.imageType === 'image/jpeg' ? '#000000' : data.backgroundColor === 'transparent' ? 'Transparent' : data.backgroundColor}</button>
+                                {
+                                    data.backgroundColor !== 'transparent' && data.imageType !== 'image/jpeg'
+                                        ? <button type="button" className="text-sm text-black underline underline-offset-2" onClick={() => dispatch({ type: 'SET_BACKGROUND_COLOR', value: 'transparent' })}>Reset to Transparent</button>
+                                        : null
+                                }
+                            </div>
                         </div>
                     </div>
                     <div>
@@ -239,10 +292,17 @@ export default function ConverterUtility({ className = '' }) {
                         <p className="mt-1 text-sm italic text-neutral-500">{data.outputName}</p>
                         <p className="mt-1 text-sm text-neutral-500">{Math.floor(data.width * (2 ** data.scale))}&times;{Math.floor(data.height * (2 ** data.scale))}</p>
                         <div className="flex items-center gap-3 mt-1">
-                            <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm border border-black" onClick={() => dispatch({ type: 'DOWNLOAD' })}>
-                                <DownloadIcon width="16" height="16" />
-                                <span>Download</span>
-                            </button>
+                            {
+                                data.isProcessing
+                                    ? <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm border border-neutral-500 text-neutral-500" disabled>
+                                        <LoadingIcon width="16" height="16" />
+                                        <span>Processing...</span>
+                                    </button>
+                                    : <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm border border-black" onClick={() => handleDownloadClick()}>
+                                        <DownloadIcon width="16" height="16" />
+                                        <span>Download</span>
+                                    </button>
+                            }
                             <button type="button" className="px-3 py-2 text-sm text-red-500 border border-red-500" onClick={() => dispatch({ type: 'RESET' })}>Reset</button>
                         </div>
                     </div>
